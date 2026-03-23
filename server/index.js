@@ -93,7 +93,7 @@ app.get('/api/realtime', async (req, res) => {
     }
 
     const result = { activeUsers, sparkline };
-    cache.set(cacheKey, result, 5);
+    cache.set(cacheKey, result, 30);
     res.json(result);
   } catch (err) {
     console.error('GA4 realtime error:', err.message);
@@ -133,7 +133,7 @@ app.get('/api/top-news', async (req, res) => {
         activeUsers: parseInt(r.metricValues[0].value || 0),
       }));
 
-    cache.set(cacheKey, rows, 5);
+    cache.set(cacheKey, rows, 30);
     res.json(rows);
   } catch (err) {
     console.error('GA4 top-news error:', err.message);
@@ -159,16 +159,15 @@ app.get('/api/yt-realtime', async (req, res) => {
     const totalViews     = parseInt(channel?.statistics?.viewCount || 0);
     const subscriberCount = parseInt(channel?.statistics?.subscriberCount || 0);
 
-    // Get latest 20 videos to track deltas
-    const searchRes = await yt.search.list({
-      part: ['snippet'],
-      channelId: YT_CHANNEL,
-      order: 'date',
+    // Get latest 20 videos via uploads playlist (1 unit vs 100 for search.list)
+    const uploadsPlaylistId = YT_CHANNEL.replace(/^UC/, 'UU');
+    const playlistRes = await yt.playlistItems.list({
+      part: ['contentDetails'],
+      playlistId: uploadsPlaylistId,
       maxResults: 20,
-      type: ['video'],
     });
 
-    const videoIds = (searchRes.data.items || []).map(i => i.id.videoId).filter(Boolean);
+    const videoIds = (playlistRes.data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
 
     let viewsLast60 = 0;
     if (videoIds.length > 0) {
@@ -196,7 +195,7 @@ app.get('/api/yt-realtime', async (req, res) => {
     }
 
     const result = { totalViews, subscriberCount, viewsLast60, sparkline };
-    cache.set(cacheKey, result, 30);
+    cache.set(cacheKey, result, 120);
     res.json(result);
   } catch (err) {
     console.error('YT realtime error:', err.message);
@@ -213,17 +212,15 @@ app.get('/api/yt-top-videos', async (req, res) => {
   try {
     const yt = google.youtube({ version: 'v3', auth: YT_API_KEY });
 
-    // Get most recent 50 videos
-    const searchRes = await yt.search.list({
-      part: ['snippet'],
-      channelId: YT_CHANNEL,
-      order: 'date',
+    // Get most recent 50 videos via uploads playlist (1 unit vs 100 for search.list)
+    const uploadsPlaylistId = YT_CHANNEL.replace(/^UC/, 'UU');
+    const playlistRes = await yt.playlistItems.list({
+      part: ['contentDetails'],
+      playlistId: uploadsPlaylistId,
       maxResults: 50,
-      type: ['video'],
     });
 
-    const items = searchRes.data.items || [];
-    const videoIds = items.map(i => i.id.videoId).filter(Boolean);
+    const videoIds = (playlistRes.data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
 
     if (videoIds.length === 0) return res.json([]);
 
@@ -246,7 +243,7 @@ app.get('/api/yt-top-videos', async (req, res) => {
       .sort((a, b) => b.viewCount - a.viewCount)
       .slice(0, 10);
 
-    cache.set(cacheKey, videos, 60);
+    cache.set(cacheKey, videos, 300);
     res.json(videos);
   } catch (err) {
     console.error('YT top-videos error:', err.message);
