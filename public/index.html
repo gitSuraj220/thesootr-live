@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TheSootr — Live Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #12131a 0%, #1a1b26 100%);
+      border-bottom: 1px solid #2d2d3a;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo img { height: 36px; }
+    .logo-text { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+    .logo-badge {
+      background: #ef4444;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 1px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+    .last-update { font-size: 12px; color: #64748b; }
+
+    /* ── Main Layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 20px 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+    /* ── Panel ── */
+    .panel {
+      background: #12131a;
+      border: 1px solid #2d2d3a;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid #2d2d3a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-icon { font-size: 20px; }
+    .panel-title { font-size: 15px; font-weight: 600; color: #fff; }
+    .panel-subtitle { font-size: 12px; color: #64748b; margin-left: auto; }
+
+    /* ── Stat Card ── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 16px;
+    }
+    .stat-card {
+      background: #1a1b26;
+      border: 1px solid #2d2d3a;
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #fff; line-height: 1; }
+    .stat-value.green { color: #22c55e; }
+    .stat-value.red   { color: #ef4444; }
+    .stat-value.blue  { color: #3b82f6; }
+    .stat-trend { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+    /* ── Sparkline ── */
+    .sparkline-wrap { padding: 0 16px 12px; }
+    .sparkline-label { font-size: 11px; color: #64748b; margin-bottom: 6px; }
+    canvas.sparkline { width: 100%; height: 50px; display: block; }
+
+    /* ── Top List ── */
+    .top-list { padding: 0 0 8px; }
+    .top-list-header {
+      padding: 10px 18px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      border-top: 1px solid #2d2d3a;
+    }
+    .top-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 18px;
+      border-bottom: 1px solid #1e1f2e;
+      transition: background .15s;
+    }
+    .top-item:hover { background: #1a1b26; }
+    .top-rank {
+      width: 22px;
+      height: 22px;
+      background: #1e1f2e;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      flex-shrink: 0;
+    }
+    .top-rank.gold   { background: #78350f; color: #fbbf24; }
+    .top-rank.silver { background: #1e293b; color: #94a3b8; }
+    .top-rank.bronze { background: #431407; color: #f97316; }
+    .top-thumb {
+      width: 52px;
+      height: 34px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: #1e1f2e;
+    }
+    .top-info { flex: 1; min-width: 0; }
+    .top-title {
+      font-size: 12.5px;
+      color: #e2e8f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+    .top-meta { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .top-users {
+      font-size: 13px;
+      font-weight: 700;
+      color: #22c55e;
+      flex-shrink: 0;
+      text-align: right;
+      min-width: 44px;
+    }
+    .top-users span { display: block; font-size: 10px; font-weight: 400; color: #64748b; }
+
+    /* ── Loading / Error ── */
+    .loading {
+      padding: 32px;
+      text-align: center;
+      color: #64748b;
+      font-size: 13px;
+    }
+    .dot-spin::after {
+      content: '...';
+      animation: dots 1.2s infinite;
+    }
+    @keyframes dots {
+      0%{content:'.'} 33%{content:'..'} 66%{content:'...'}
+    }
+    .error-msg { color: #ef4444; font-size: 12px; padding: 16px; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 16px;
+      color: #374151;
+      font-size: 11px;
+      border-top: 1px solid #1e1f2e;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-text">TheSootr</div>
+    <div class="logo-badge">● LIVE</div>
+  </div>
+  <div class="last-update" id="lastUpdate">Updating...</div>
+</header>
+
+<main>
+
+  <!-- ── WEB PANEL ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-icon">🌐</span>
+      <span class="panel-title">Website — Live</span>
+      <span class="panel-subtitle">GA4 · Refresh 5s</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Users</div>
+        <div class="stat-value green" id="webActiveUsers">—</div>
+        <div class="stat-trend">Right now on site</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">30-min Trend</div>
+        <div class="stat-value blue" id="webPeakUsers">—</div>
+        <div class="stat-trend">Peak in last 30 min</div>
+      </div>
+    </div>
+
+    <div class="sparkline-wrap">
+      <div class="sparkline-label">Active users — last 30 minutes</div>
+      <canvas class="sparkline" id="webSparkline" height="50"></canvas>
+    </div>
+
+    <div class="top-list">
+      <div class="top-list-header">Top 10 Stories — Live Readers</div>
+      <div id="webTopList"><div class="loading dot-spin">Loading</div></div>
+    </div>
+  </div>
+
+  <!-- ── YOUTUBE PANEL ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-icon">▶️</span>
+      <span class="panel-title">YouTube — Live</span>
+      <span class="panel-subtitle">Data API · Refresh 30s</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-label">Views Last 60 Min</div>
+        <div class="stat-value red" id="ytViews60">—</div>
+        <div class="stat-trend">Across recent videos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Subscribers</div>
+        <div class="stat-value blue" id="ytSubs">—</div>
+        <div class="stat-trend">Total channel</div>
+      </div>
+    </div>
+
+    <div class="stat-row" style="padding-top:0">
+      <div class="stat-card" style="grid-column:1/-1">
+        <div class="stat-label">Total Channel Views</div>
+        <div class="stat-value" id="ytTotalViews">—</div>
+        <div class="stat-trend">All time</div>
+      </div>
+    </div>
+
+    <div class="top-list">
+      <div class="top-list-header">Top 10 Videos — View Count</div>
+      <div id="ytTopList"><div class="loading dot-spin">Loading</div></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  TheSootr Live Dashboard · Web refreshes every 5s · YouTube refreshes every 30s
+</footer>
+
+<script>
+  // ── Utilities ──────────────────────────────────────────────
+  function fmt(n) {
+    if (n === null || n === undefined || isNaN(n)) return '—';
+    if (n >= 1e7) return (n / 1e7).toFixed(1) + 'Cr';
+    if (n >= 1e5) return (n / 1e5).toFixed(1) + 'L';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function rankClass(i) {
+    if (i === 0) return 'gold';
+    if (i === 1) return 'silver';
+    if (i === 2) return 'bronze';
+    return '';
+  }
+
+  function timeSince(iso) {
+    if (!iso) return '';
+    const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
+    if (secs < 60) return `${secs}s ago`;
+    if (secs < 3600) return `${Math.floor(secs/60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs/3600)}h ago`;
+    return `${Math.floor(secs/86400)}d ago`;
+  }
+
+  // ── Sparkline canvas ──────────────────────────────────────
+  function drawSparkline(canvasId, data, color = '#22c55e') {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth;
+    const H = 50;
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    if (!data || data.length < 2) return;
+    const max = Math.max(...data, 1);
+    const step = W / (data.length - 1);
+
+    ctx.clearRect(0, 0, W, H);
+
+    // Fill gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, color + '55');
+    grad.addColorStop(1, color + '00');
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = i * step;
+      const y = H - (v / max) * (H - 6) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineTo((data.length - 1) * step, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = i * step;
+      const y = H - (v / max) * (H - 6) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+
+  // ── Web (GA4) ─────────────────────────────────────────────
+  async function fetchWebRealtime() {
+    try {
+      const data = await fetch('/api/realtime').then(r => r.json());
+      document.getElementById('webActiveUsers').textContent = fmt(data.activeUsers);
+      if (data.sparkline?.length) {
+        const peak = Math.max(...data.sparkline);
+        document.getElementById('webPeakUsers').textContent = fmt(peak);
+        drawSparkline('webSparkline', data.sparkline, '#22c55e');
+      }
+    } catch(e) {
+      document.getElementById('webActiveUsers').textContent = 'Err';
+    }
+  }
+
+  async function fetchWebTopNews() {
+    try {
+      const data = await fetch('/api/top-news').then(r => r.json());
+      if (!Array.isArray(data) || data.length === 0) {
+        document.getElementById('webTopList').innerHTML = '<div class="loading">No data</div>';
+        return;
+      }
+      document.getElementById('webTopList').innerHTML = data.map((item, i) => `
+        <div class="top-item">
+          <div class="top-rank ${rankClass(i)}">${i+1}</div>
+          <div class="top-info">
+            <div class="top-title" title="${item.title}">${item.title}</div>
+            <div class="top-meta">${item.path}</div>
+          </div>
+          <div class="top-users">${fmt(item.activeUsers)}<span>live</span></div>
+        </div>
+      `).join('');
+    } catch(e) {
+      document.getElementById('webTopList').innerHTML = `<div class="error-msg">Error loading data</div>`;
+    }
+  }
+
+  // ── YouTube ───────────────────────────────────────────────
+  async function fetchYTRealtime() {
+    try {
+      const data = await fetch('/api/yt-realtime').then(r => r.json());
+      document.getElementById('ytViews60').textContent = fmt(data.viewsLast60 || 0);
+      document.getElementById('ytSubs').textContent = fmt(data.subscriberCount);
+      document.getElementById('ytTotalViews').textContent = fmt(data.totalViews);
+    } catch(e) {
+      document.getElementById('ytViews60').textContent = 'Err';
+    }
+  }
+
+  async function fetchYTTopVideos() {
+    try {
+      const data = await fetch('/api/yt-top-videos').then(r => r.json());
+      if (!Array.isArray(data) || data.length === 0) {
+        document.getElementById('ytTopList').innerHTML = '<div class="loading">No data</div>';
+        return;
+      }
+      document.getElementById('ytTopList').innerHTML = data.map((v, i) => `
+        <div class="top-item">
+          <div class="top-rank ${rankClass(i)}">${i+1}</div>
+          <img class="top-thumb" src="${v.thumbnail}" alt="" loading="lazy" />
+          <div class="top-info">
+            <div class="top-title" title="${v.title}">${v.title}</div>
+            <div class="top-meta">${timeSince(v.publishedAt)} · 👍 ${fmt(v.likeCount)}</div>
+          </div>
+          <div class="top-users">${fmt(v.viewCount)}<span>views</span></div>
+        </div>
+      `).join('');
+    } catch(e) {
+      document.getElementById('ytTopList').innerHTML = `<div class="error-msg">Error loading data</div>`;
+    }
+  }
+
+  function updateTimestamp() {
+    document.getElementById('lastUpdate').textContent =
+      'Updated: ' + new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // ── Init & polling ────────────────────────────────────────
+  async function initAll() {
+    await Promise.all([fetchWebRealtime(), fetchWebTopNews(), fetchYTRealtime(), fetchYTTopVideos()]);
+    updateTimestamp();
+  }
+
+  initAll();
+
+  // Web: refresh every 5s
+  setInterval(() => { fetchWebRealtime(); fetchWebTopNews(); updateTimestamp(); }, 5000);
+
+  // YouTube: refresh every 30s
+  setInterval(() => { fetchYTRealtime(); fetchYTTopVideos(); }, 30000);
+</script>
+</body>
+</html>
