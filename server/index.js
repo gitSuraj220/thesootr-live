@@ -60,14 +60,15 @@ app.get('/api/realtime', async (req, res) => {
     const auth = getGoogleAuth();
     const analytics = google.analyticsdata({ version: 'v1beta', auth });
 
-    const [rtRes, sparkRes] = await Promise.all([
+    const [totalRes, sparkRes] = await Promise.all([
+      // No dimension = deduplicated total active users (correct count)
       analytics.properties.runRealtimeReport({
         property: GA4_PROPERTY,
         requestBody: {
           metrics: [{ name: 'activeUsers' }],
-          dimensions: [{ name: 'minutesAgo' }],
         },
       }),
+      // minutesAgo dimension for sparkline only
       analytics.properties.runRealtimeReport({
         property: GA4_PROPERTY,
         requestBody: {
@@ -78,8 +79,7 @@ app.get('/api/realtime', async (req, res) => {
       }),
     ]);
 
-    const rows = rtRes.data.rows || [];
-    const activeUsers = rows.reduce((sum, r) => sum + parseInt(r.metricValues[0].value || 0), 0);
+    const activeUsers = parseInt(totalRes.data.rows?.[0]?.metricValues?.[0]?.value || 0);
 
     // Build sparkline: 30-min window, minute by minute
     const sparkMap = {};
