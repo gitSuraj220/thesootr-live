@@ -3,9 +3,18 @@ const express = require('express');
 const { google } = require('googleapis');
 const NodeCache = require('node-cache');
 const path = require('path');
+const { Redis } = require('@upstash/redis');
 
 const app = express();
 const cache = new NodeCache();
+
+// ── Upstash Redis (for YT view delta tracking) ─────────────
+const redis = process.env.UPSTASH_REDIS_REST_URL
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null;
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
@@ -119,7 +128,7 @@ app.get('/api/top-news', async (req, res) => {
   }
 });
 
-// ── YouTube: Channel stats ──────────────────────────────────
+// ── YouTube: Channel stats + views-last-60-min via Redis ───
 app.get('/api/yt-realtime', async (req, res) => {
   const cacheKey = 'yt_rt';
   const cached = cache.get(cacheKey);
@@ -133,12 +142,35 @@ app.get('/api/yt-realtime', async (req, res) => {
       id: [YT_CHANNEL],
     });
     const stats = channelRes.data.items?.[0]?.statistics || {};
-    const result = {
-      totalViews:    parseInt(stats.viewCount || 0),
-      subscriberCount: parseInt(stats.subscriberCount || 0),
-      videoCount:    parseInt(stats.videoCount || 0),
-    };
-    cache.set(cacheKey, result, 120);
+    const totalViews      = parseInt(stats.viewCount || 0);
+    const subscriberCount = parseInt(stats.subscriberCount || 0);
+    const videoCount      = parseInt(stats.videoCount || 0);
+
+    // ── Delta tracking via Upstash Redis ──────────────────
+    let viewsLast60 = null;
+    if (redis && totalViews > 0) {
+      const now = Date.now();
+      const snapshot = JSON.stringify({ t: now, v: totalViews });
+
+      // Push new snapshot, keep only last 150 entries (~75 min at 30s intervals)
+      await redis.lpush('yt_view_history', snapshot);
+      await redis.ltrim('yt_view_history', 0, 149);
+
+      // Read full history, find oldest entry within 60-min window
+      const raw = await redis.lrange('yt_view_history', 0, -1);
+      const history = raw
+        .map(e => (typeof e === 'string' ? JSON.parse(e) : e))
+        .sort((a, b) => a.t - b.t); // oldest first
+
+      const cutoff = now - 60 * 60 * 1000;
+      const baseline = history.find(h => h.t <= cutoff + 60 * 1000); // entry ~60 min ago
+      if (baseline) {
+        viewsLast60 = Math.max(0, totalViews - baseline.v);
+      }
+    }
+
+    const result = { totalViews, subscriberCount, videoCount, viewsLast60 };
+    cache.set(cacheKey, result, 30);
     res.json(result);
   } catch (err) {
     console.error('YT realtime error:', err.message);

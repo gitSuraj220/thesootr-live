@@ -237,22 +237,22 @@
 
     <div class="stat-row">
       <div class="stat-card">
+        <div class="stat-label">Views Last 60 Min</div>
+        <div class="stat-value red" id="ytViews60">—</div>
+        <div class="stat-trend">Across all videos</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">Subscribers</div>
         <div class="stat-value blue" id="ytSubs">—</div>
         <div class="stat-trend">Total channel</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Views</div>
-        <div class="stat-value" id="ytTotalViews">—</div>
-        <div class="stat-trend">All time</div>
       </div>
     </div>
 
     <div class="stat-row" style="padding-top:0">
       <div class="stat-card">
-        <div class="stat-label">Total Videos</div>
-        <div class="stat-value" id="ytVideoCount">—</div>
-        <div class="stat-trend">Published</div>
+        <div class="stat-label">Total Views</div>
+        <div class="stat-value" id="ytTotalViews">—</div>
+        <div class="stat-trend">All time</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Latest Video Views</div>
@@ -389,7 +389,10 @@
       const data = await fetch('/api/yt-realtime').then(r => r.json());
       document.getElementById('ytSubs').textContent = fmt(data.subscriberCount);
       document.getElementById('ytTotalViews').textContent = fmt(data.totalViews);
-      document.getElementById('ytVideoCount').textContent = fmt(data.videoCount);
+      document.getElementById('ytViews60').textContent =
+        data.viewsLast60 !== null && data.viewsLast60 !== undefined
+          ? fmt(data.viewsLast60)
+          : '—';
     } catch(e) {
       document.getElementById('ytSubs').textContent = 'Err';
     }
