@@ -141,8 +141,8 @@ app.get('/api/yt-realtime', async (req, res) => {
     const yt = google.youtube({ version: 'v3', auth: YT_API_KEY });
 
     const channelRes = await yt.channels.list({
-      part: ['statistics'],
-      id: [YT_CHANNEL],
+      part: 'statistics',
+      id: YT_CHANNEL,
     });
     const stats = channelRes.data.items?.[0]?.statistics || {};
     const totalViews      = parseInt(stats.viewCount || 0);
@@ -195,7 +195,7 @@ app.get('/api/yt-top-videos', async (req, res) => {
     // Get most recent 50 videos via uploads playlist (1 unit vs 100 for search.list)
     const uploadsPlaylistId = YT_CHANNEL.replace(/^UC/, 'UU');
     const playlistRes = await yt.playlistItems.list({
-      part: ['contentDetails'],
+      part: 'contentDetails',
       playlistId: uploadsPlaylistId,
       maxResults: 50,
     });
@@ -205,8 +205,8 @@ app.get('/api/yt-top-videos', async (req, res) => {
     if (videoIds.length === 0) return res.json([]);
 
     const statsRes = await yt.videos.list({
-      part: ['statistics', 'snippet'],
-      id: videoIds,
+      part: 'statistics,snippet',
+      id: videoIds.join(','),
     });
 
     const videos = (statsRes.data.items || [])
