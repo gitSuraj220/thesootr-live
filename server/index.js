@@ -27,28 +27,6 @@ const GA4_PROPERTY = `properties/${process.env.GA4_PROPERTY_ID || '278320255'}`;
 const YT_API_KEY   = process.env.YT_API_KEY;
 const YT_CHANNEL   = process.env.YT_CHANNEL_ID || 'UCnOACbwmpn3_adWl_zU63YQ';
 
-// ── YouTube view delta tracker (for "views in last 60 min") ──
-// Stores: { videoId: [{timestamp, viewCount}, ...] }
-const ytHistory = {};
-
-function recordViewSnapshot(videoId, viewCount) {
-  const now = Date.now();
-  if (!ytHistory[videoId]) ytHistory[videoId] = [];
-  ytHistory[videoId].push({ t: now, v: viewCount });
-  // Keep only last 70 minutes of data
-  const cutoff = now - 70 * 60 * 1000;
-  ytHistory[videoId] = ytHistory[videoId].filter(e => e.t >= cutoff);
-}
-
-function viewsInLast60Min(videoId) {
-  const history = ytHistory[videoId];
-  if (!history || history.length < 2) return null;
-  const now = Date.now();
-  const cutoff = now - 60 * 60 * 1000;
-  const recent = history.filter(e => e.t >= cutoff);
-  if (recent.length < 2) return null;
-  return recent[recent.length - 1].v - recent[0].v;
-}
 
 // ── GA4 Realtime ───────────────────────────────────────────
 app.get('/api/realtime', async (req, res) => {
@@ -141,7 +119,7 @@ app.get('/api/top-news', async (req, res) => {
   }
 });
 
-// ── YouTube: Realtime views (last 60 min) + Channel stats ──
+// ── YouTube: Channel stats ──────────────────────────────────
 app.get('/api/yt-realtime', async (req, res) => {
   const cacheKey = 'yt_rt';
   const cached = cache.get(cacheKey);
@@ -150,51 +128,16 @@ app.get('/api/yt-realtime', async (req, res) => {
   try {
     const yt = google.youtube({ version: 'v3', auth: YT_API_KEY });
 
-    // Get channel stats
     const channelRes = await yt.channels.list({
-      part: ['statistics', 'snippet'],
+      part: ['statistics'],
       id: [YT_CHANNEL],
     });
-    const channel = channelRes.data.items?.[0];
-    const totalViews     = parseInt(channel?.statistics?.viewCount || 0);
-    const subscriberCount = parseInt(channel?.statistics?.subscriberCount || 0);
-
-    // Get latest 20 videos via uploads playlist (1 unit vs 100 for search.list)
-    const uploadsPlaylistId = YT_CHANNEL.replace(/^UC/, 'UU');
-    const playlistRes = await yt.playlistItems.list({
-      part: ['contentDetails'],
-      playlistId: uploadsPlaylistId,
-      maxResults: 20,
-    });
-
-    const videoIds = (playlistRes.data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
-
-    let viewsLast60 = 0;
-    if (videoIds.length > 0) {
-      const statsRes = await yt.videos.list({
-        part: ['statistics'],
-        id: videoIds,
-      });
-      (statsRes.data.items || []).forEach(v => {
-        const vc = parseInt(v.statistics?.viewCount || 0);
-        recordViewSnapshot(v.id, vc);
-        const delta = viewsInLast60Min(v.id);
-        if (delta !== null && delta > 0) viewsLast60 += delta;
-      });
-    }
-
-    // Build sparkline from total channel view history (approx)
-    const channelHistKey = '__channel__';
-    recordViewSnapshot(channelHistKey, totalViews);
-    const sparkline = [];
-    if (ytHistory[channelHistKey] && ytHistory[channelHistKey].length > 1) {
-      // Show relative delta per snapshot in last 30 entries
-      const hist = ytHistory[channelHistKey].slice(-30);
-      const base = hist[0].v;
-      hist.forEach(h => sparkline.push(h.v - base));
-    }
-
-    const result = { totalViews, subscriberCount, viewsLast60, sparkline };
+    const stats = channelRes.data.items?.[0]?.statistics || {};
+    const result = {
+      totalViews:    parseInt(stats.viewCount || 0),
+      subscriberCount: parseInt(stats.subscriberCount || 0),
+      videoCount:    parseInt(stats.videoCount || 0),
+    };
     cache.set(cacheKey, result, 120);
     res.json(result);
   } catch (err) {
@@ -238,7 +181,6 @@ app.get('/api/yt-top-videos', async (req, res) => {
         viewCount: parseInt(v.statistics?.viewCount || 0),
         likeCount: parseInt(v.statistics?.likeCount || 0),
         commentCount: parseInt(v.statistics?.commentCount || 0),
-        viewsLast60: viewsInLast60Min(v.id) || 0,
       }))
       .sort((a, b) => b.viewCount - a.viewCount)
       .slice(0, 10);

@@ -237,22 +237,27 @@
 
     <div class="stat-row">
       <div class="stat-card">
-        <div class="stat-label">Views Last 60 Min</div>
-        <div class="stat-value red" id="ytViews60">—</div>
-        <div class="stat-trend">Across recent videos</div>
-      </div>
-      <div class="stat-card">
         <div class="stat-label">Subscribers</div>
         <div class="stat-value blue" id="ytSubs">—</div>
         <div class="stat-trend">Total channel</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Views</div>
+        <div class="stat-value" id="ytTotalViews">—</div>
+        <div class="stat-trend">All time</div>
+      </div>
     </div>
 
     <div class="stat-row" style="padding-top:0">
-      <div class="stat-card" style="grid-column:1/-1">
-        <div class="stat-label">Total Channel Views</div>
-        <div class="stat-value" id="ytTotalViews">—</div>
-        <div class="stat-trend">All time</div>
+      <div class="stat-card">
+        <div class="stat-label">Total Videos</div>
+        <div class="stat-value" id="ytVideoCount">—</div>
+        <div class="stat-trend">Published</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Latest Video Views</div>
+        <div class="stat-value green" id="ytLatestViews">—</div>
+        <div class="stat-trend" id="ytLatestTitle" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Most recent upload</div>
       </div>
     </div>
 
@@ -382,11 +387,11 @@
   async function fetchYTRealtime() {
     try {
       const data = await fetch('/api/yt-realtime').then(r => r.json());
-      document.getElementById('ytViews60').textContent = fmt(data.viewsLast60 || 0);
       document.getElementById('ytSubs').textContent = fmt(data.subscriberCount);
       document.getElementById('ytTotalViews').textContent = fmt(data.totalViews);
+      document.getElementById('ytVideoCount').textContent = fmt(data.videoCount);
     } catch(e) {
-      document.getElementById('ytViews60').textContent = 'Err';
+      document.getElementById('ytSubs').textContent = 'Err';
     }
   }
 
@@ -397,6 +402,14 @@
         document.getElementById('ytTopList').innerHTML = '<div class="loading">No data</div>';
         return;
       }
+
+      // Latest upload = most recent by publishedAt
+      const latest = [...data].sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))[0];
+      if (latest) {
+        document.getElementById('ytLatestViews').textContent = fmt(latest.viewCount);
+        document.getElementById('ytLatestTitle').textContent = latest.title;
+      }
+
       document.getElementById('ytTopList').innerHTML = data.map((v, i) => `
         <div class="top-item">
           <div class="top-rank ${rankClass(i)}">${i+1}</div>
