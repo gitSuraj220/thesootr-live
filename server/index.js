@@ -192,24 +192,20 @@ app.get('/api/yt-top-videos', async (req, res) => {
   try {
     const yt = google.youtube({ version: 'v3', auth: YT_API_KEY });
 
-    // Get most recent 50 videos via uploads playlist (1 unit vs 100 for search.list)
+    // Use direct fetch to avoid googleapis quirks on serverless
     const uploadsPlaylistId = YT_CHANNEL.replace(/^UC/, 'UU');
-    const playlistRes = await yt.playlistItems.list({
-      part: 'contentDetails',
-      playlistId: uploadsPlaylistId,
-      maxResults: 50,
-    });
+    const plUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50&key=${YT_API_KEY}`;
+    const plRes = await fetch(plUrl).then(r => r.json());
+    if (plRes.error) throw new Error(JSON.stringify(plRes.error));
 
-    const videoIds = (playlistRes.data.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
-
+    const videoIds = (plRes.items || []).map(i => i.contentDetails?.videoId).filter(Boolean);
     if (videoIds.length === 0) return res.json([]);
 
-    const statsRes = await yt.videos.list({
-      part: 'statistics,snippet',
-      id: videoIds.join(','),
-    });
+    const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,snippet&id=${videoIds.join(',')}&key=${YT_API_KEY}`;
+    const statsRes = await fetch(vUrl).then(r => r.json());
+    if (statsRes.error) throw new Error(JSON.stringify(statsRes.error));
 
-    const videos = (statsRes.data.items || [])
+    const videos = (statsRes.items || [])
       .map(v => ({
         id: v.id,
         title: v.snippet?.title || '',
