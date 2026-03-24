@@ -225,8 +225,9 @@ app.get('/api/yt-top-videos', async (req, res) => {
     cache.set(cacheKey, videos, 300);
     res.json(videos);
   } catch (err) {
-    console.error('YT top-videos error:', err.message);
-    res.status(500).json({ error: err.message });
+    const details = err.response?.data?.error || err.message;
+    console.error('YT top-videos error:', JSON.stringify(details));
+    res.status(500).json({ error: details });
   }
 });
 
