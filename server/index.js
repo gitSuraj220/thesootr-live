@@ -3,18 +3,21 @@ const express = require('express');
 const { google } = require('googleapis');
 const NodeCache = require('node-cache');
 const path = require('path');
-const { Redis } = require('@upstash/redis');
-
 const app = express();
 const cache = new NodeCache();
 
-// ── Upstash Redis (for YT view delta tracking) ─────────────
-const redis = process.env.UPSTASH_REDIS_REST_URL
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  : null;
+// ── Upstash REST helpers (no package needed) ───────────────
+const REDIS_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+async function redisCmd(...args) {
+  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  const res = await fetch(`${REDIS_URL}/${args.map(encodeURIComponent).join('/')}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  const json = await res.json();
+  return json.result;
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
@@ -148,24 +151,26 @@ app.get('/api/yt-realtime', async (req, res) => {
 
     // ── Delta tracking via Upstash Redis ──────────────────
     let viewsLast60 = null;
-    if (redis && totalViews > 0) {
+    if (REDIS_URL && totalViews > 0) {
       const now = Date.now();
       const snapshot = JSON.stringify({ t: now, v: totalViews });
 
       // Push new snapshot, keep only last 150 entries (~75 min at 30s intervals)
-      await redis.lpush('yt_view_history', snapshot);
-      await redis.ltrim('yt_view_history', 0, 149);
+      await redisCmd('lpush', 'yt_view_history', snapshot);
+      await redisCmd('ltrim', 'yt_view_history', '0', '149');
 
       // Read full history, find oldest entry within 60-min window
-      const raw = await redis.lrange('yt_view_history', 0, -1);
-      const history = raw
-        .map(e => (typeof e === 'string' ? JSON.parse(e) : e))
-        .sort((a, b) => a.t - b.t); // oldest first
+      const raw = await redisCmd('lrange', 'yt_view_history', '0', '-1');
+      if (Array.isArray(raw)) {
+        const history = raw
+          .map(e => (typeof e === 'string' ? JSON.parse(e) : e))
+          .sort((a, b) => a.t - b.t);
 
-      const cutoff = now - 60 * 60 * 1000;
-      const baseline = history.find(h => h.t <= cutoff + 60 * 1000); // entry ~60 min ago
-      if (baseline) {
-        viewsLast60 = Math.max(0, totalViews - baseline.v);
+        const cutoff = now - 60 * 60 * 1000;
+        const baseline = history.find(h => h.t <= cutoff + 60 * 1000);
+        if (baseline) {
+          viewsLast60 = Math.max(0, totalViews - baseline.v);
+        }
       }
     }
 
