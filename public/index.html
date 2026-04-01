@@ -386,13 +386,16 @@
   // ── YouTube ───────────────────────────────────────────────
   async function fetchYTRealtime() {
     try {
-      const data = await fetch('/api/yt-realtime').then(r => r.json());
+      const [data, v60] = await Promise.all([
+        fetch('/api/yt-realtime').then(r => r.json()),
+        fetch('/api/yt-views60').then(r => r.json()),
+      ]);
       document.getElementById('ytSubs').textContent = fmt(data.subscriberCount);
       document.getElementById('ytTotalViews').textContent = fmt(data.totalViews);
       document.getElementById('ytViews60').textContent =
-        data.viewsLast60 !== null && data.viewsLast60 !== undefined
-          ? fmt(data.viewsLast60)
-          : '—';
+        v60.views60 !== null && v60.views60 !== undefined
+          ? fmt(v60.views60)
+          : (v60.authorized === false ? '🔑 Auth needed' : '—');
     } catch(e) {
       document.getElementById('ytSubs').textContent = 'Err';
     }

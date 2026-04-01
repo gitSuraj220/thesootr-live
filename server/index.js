@@ -22,7 +22,7 @@ async function redisCmd(...args) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// ── Google Auth (Service Account) ─────────────────────────
+// ── Google Auth (Service Account for GA4) ─────────────────
 function getGoogleAuth() {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyJson) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY not set');
@@ -34,6 +34,81 @@ function getGoogleAuth() {
     scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
   });
 }
+
+// ── YouTube Analytics OAuth ────────────────────────────────
+const YT_OAUTH = new google.auth.OAuth2(
+  process.env.YT_OAUTH_CLIENT_ID,
+  process.env.YT_OAUTH_CLIENT_SECRET,
+  (process.env.BASE_URL || 'https://thesootr-live.vercel.app') + '/auth/youtube/callback'
+);
+
+async function getYTAnalyticsAuth() {
+  const token = await redisCmd('get', 'yt_refresh_token');
+  if (!token) return null;
+  YT_OAUTH.setCredentials({ refresh_token: token });
+  return YT_OAUTH;
+}
+
+// Step 1: Start OAuth for YouTube Analytics
+app.get('/auth/youtube', (req, res) => {
+  const url = YT_OAUTH.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/yt-analytics.readonly'],
+    prompt: 'consent',
+  });
+  res.redirect(url);
+});
+
+// Step 2: Store refresh token in Redis
+app.get('/auth/youtube/callback', async (req, res) => {
+  try {
+    const { tokens } = await YT_OAUTH.getToken(req.query.code);
+    if (tokens.refresh_token) {
+      await redisCmd('set', 'yt_refresh_token', tokens.refresh_token);
+      res.send('<h2>YouTube Analytics authorized! You can close this tab.</h2>');
+    } else {
+      res.send('<h2>No refresh token received. Try again at /auth/youtube</h2>');
+    }
+  } catch (e) {
+    res.status(500).send('OAuth error: ' + e.message);
+  }
+});
+
+// YouTube Analytics: views in last 60 min (current + previous UTC hour)
+app.get('/api/yt-views60', async (req, res) => {
+  const cached = cache.get('yt_views60');
+  if (cached !== undefined) return res.json(cached);
+
+  try {
+    const auth = await getYTAnalyticsAuth();
+    if (!auth) return res.json({ views60: null, authorized: false });
+
+    const today = new Date().toISOString().split('T')[0];
+    const ytAnalytics = google.youtubeAnalytics({ version: 'v2', auth });
+
+    const report = await ytAnalytics.reports.query({
+      ids: 'channel==MINE',
+      startDate: today,
+      endDate: today,
+      metrics: 'views',
+      dimensions: 'hour',
+    });
+
+    const nowHour = new Date().getUTCHours();
+    const rows = report.data.rows || [];
+    let views60 = 0;
+    rows.forEach(([hour, views]) => {
+      if (hour === nowHour || hour === nowHour - 1) views60 += views;
+    });
+
+    const result = { views60, authorized: true };
+    cache.set('yt_views60', result, 300); // cache 5 min
+    res.json(result);
+  } catch (err) {
+    console.error('YT Analytics error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 const GA4_PROPERTY = `properties/${process.env.GA4_PROPERTY_ID || '278320255'}`;
 const YT_API_KEY   = process.env.YT_API_KEY;
